@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aitoolkit"
+version = "0.2.0"
+description = "Centralized AI clients (LLM, embeddings, STT, TTS, RAG) for self-hosted OpenAI-compatible GPU services."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "CNIT-Organization" }]
+
+# Core stays light and 100% LangChain-free. Heavy/optional deps live in extras.
+dependencies = [
+    "openai>=1.50",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+# Retrieval-augmented generation (Qdrant vector store).
+rag = ["qdrant-client>=1.12"]
+# Query result caching for the retriever.
+cache = ["redis>=5.0"]
+# Return LangChain BaseChatModel / Embeddings for LangGraph consumers (e.g. notebook).
+langchain = ["langchain-core>=0.3", "langchain-openai>=0.2"]
+# Everything.
+all = ["aitoolkit[rag,cache,langchain]"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aitoolkit"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
