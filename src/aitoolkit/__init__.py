@@ -8,7 +8,7 @@ top-level package never forces an optional dependency.
 
 from __future__ import annotations
 
-from aitoolkit.config import AIToolkitSettings, get_settings
+from aitoolkit.config import AIToolkitSettings, configure, get_settings
 from aitoolkit.embeddings import EmbeddingsClient, get_embeddings_client
 from aitoolkit.exceptions import (
     AIToolkitError,
@@ -35,6 +35,7 @@ __all__ = [
     "__version__",
     # config
     "AIToolkitSettings",
+    "configure",
     "get_settings",
     # llm
     "LLMClient",

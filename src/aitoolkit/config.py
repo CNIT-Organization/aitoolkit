@@ -78,7 +78,30 @@ class AIToolkitSettings(BaseSettings):
     cache_ttl: int = Field(default=3600)
 
 
+_override: Optional[AIToolkitSettings] = None
+
+
 @lru_cache(maxsize=1)
-def get_settings() -> AIToolkitSettings:
-    """Return the process-wide settings singleton."""
+def _env_settings() -> AIToolkitSettings:
+    """Settings built from AITOOLKIT_* env vars (cached fallback)."""
     return AIToolkitSettings()
+
+
+def get_settings() -> AIToolkitSettings:
+    """Return the process-wide settings.
+
+    Prefers an instance installed via :func:`configure`; otherwise builds one
+    from ``AITOOLKIT_*`` environment variables.
+    """
+    return _override if _override is not None else _env_settings()
+
+
+def configure(settings: AIToolkitSettings) -> None:
+    """Install an explicit settings object as the process-wide singleton.
+
+    Lets a consuming application own configuration directly instead of relying
+    on environment variables and this package's generic defaults. Call once at
+    startup, before any client is created.
+    """
+    global _override
+    _override = settings
