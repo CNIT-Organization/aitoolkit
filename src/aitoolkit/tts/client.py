@@ -17,8 +17,16 @@ from loguru import logger
 
 from aitoolkit.config import AIToolkitSettings, get_settings
 from aitoolkit.exceptions import TTSError
+from aitoolkit.retry import retry_async
 from aitoolkit.tts.audio import concat_wav
 from aitoolkit.types import DialogueTurn
+
+# HTTP statuses worth retrying (transient). Other 4xx are caller errors.
+_RETRIABLE_STATUS = {408, 425, 429, 500, 502, 503, 504}
+
+
+class _RetriableTTS(Exception):
+    """Internal marker for a transient TTS failure (timeout / 5xx / 429)."""
 
 
 class TTSClient:
@@ -74,19 +82,40 @@ class TTSClient:
             payload["ref_text"] = ref_text
 
         url = f"{self._base_url}{self._tts_path}"
+
+        # Fast connect (fail quickly + retry), longer read for the actual synthesis.
+        timeout = httpx.Timeout(self._timeout, connect=5.0)
+
+        async def _attempt() -> bytes:
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(url, json=payload)
+            except httpx.TransportError as exc:
+                # Transient transport faults — covers all timeouts (TimeoutException)
+                # and network/connection errors (ConnectError, ReadError, …).
+                raise _RetriableTTS(f"{type(exc).__name__}: {exc}") from exc
+            except httpx.HTTPError as exc:  # other httpx errors — don't retry.
+                raise TTSError(
+                    f"TTS request failed: {type(exc).__name__}: {exc}"
+                ) from exc
+
+            if resp.status_code != 200:
+                detail = self._error_detail(resp)
+                if resp.status_code in _RETRIABLE_STATUS:
+                    raise _RetriableTTS(detail)
+                raise TTSError(detail)  # 4xx caller error — don't retry.
+
+            if not resp.content:
+                raise TTSError("TTS returned an empty audio response")
+            return resp.content
+
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(url, json=payload)
-        except httpx.HTTPError as exc:
-            raise TTSError(f"TTS request failed: {exc}") from exc
-
-        if resp.status_code != 200:
-            raise TTSError(self._error_detail(resp))
-
-        audio = resp.content
-        if not audio:
-            raise TTSError("TTS returned an empty audio response")
-        return audio
+            return await retry_async(
+                _attempt, retry_on=(_RetriableTTS,), label="TTS synthesize"
+            )
+        except _RetriableTTS as exc:
+            # Exhausted retries on a transient fault — surface the real reason.
+            raise TTSError(f"TTS request failed after retries: {exc}") from exc
 
     async def synthesize_to_file(
         self, text: str, path: Union[str, Path], **kwargs
@@ -128,15 +157,37 @@ class TTSClient:
         if not spoken:
             raise TTSError("synthesize_dialogue: no non-empty turns provided")
 
+        # Each turn already retries transient faults (see ``synthesize``). If a
+        # turn STILL fails, skip it rather than fail the whole dialogue — a
+        # podcast missing one line is far better than no podcast at all. We only
+        # fail if every turn failed.
         clips: List[bytes] = []
-        for turn in spoken:
-            clips.append(
-                await self.synthesize(
-                    turn["text"],
-                    voice=turn["voice_id"],
-                    language=language,
-                    **kwargs,
+        failed = 0
+        for index, turn in enumerate(spoken):
+            try:
+                clips.append(
+                    await self.synthesize(
+                        turn["text"],
+                        voice=turn["voice_id"],
+                        language=language,
+                        **kwargs,
+                    )
                 )
+            except TTSError as exc:
+                failed += 1
+                logger.warning(
+                    f"synthesize_dialogue: skipping turn {index + 1}/{len(spoken)} "
+                    f"after retries failed ({exc})"
+                )
+
+        if not clips:
+            raise TTSError(
+                f"synthesize_dialogue: all {len(spoken)} turns failed to synthesize"
+            )
+        if failed:
+            logger.info(
+                f"synthesize_dialogue: produced {len(clips)}/{len(spoken)} turns "
+                f"({failed} skipped after retries)"
             )
         return concat_wav(clips, gap_ms=gap_ms)
 
