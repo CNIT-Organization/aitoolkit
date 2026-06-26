@@ -3,13 +3,26 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aitoolkit"
+name = "ff-aitoolkit"
 version = "0.2.0"
 description = "Centralized AI clients (LLM, embeddings, STT, TTS, RAG) for self-hosted OpenAI-compatible GPU services."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
-authors = [{ name = "CNIT-Organization" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Faisal Fida" }]
+keywords = ["llm", "embeddings", "stt", "tts", "rag", "openai", "self-hosted", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 
 # Core stays light and 100% LangChain-free. Heavy/optional deps live in extras.
 dependencies = [
@@ -28,7 +41,12 @@ cache = ["redis>=5.0"]
 # Return LangChain BaseChatModel / Embeddings for LangGraph consumers (e.g. notebook).
 langchain = ["langchain-core>=0.3", "langchain-openai>=0.2"]
 # Everything.
-all = ["aitoolkit[rag,cache,langchain]"]
+all = ["ff-aitoolkit[rag,cache,langchain]"]
+
+[project.urls]
+Homepage = "https://github.com/CNIT-Organization/aitoolkit"
+Repository = "https://github.com/CNIT-Organization/aitoolkit"
+Issues = "https://github.com/CNIT-Organization/aitoolkit/issues"
 
 [dependency-groups]
 dev = [
@@ -39,6 +57,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aitoolkit"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aitoolkit", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

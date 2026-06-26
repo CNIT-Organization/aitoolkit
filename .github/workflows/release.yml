@@ -1,0 +1,31 @@
+name: Publish to PyPI
+
+# Publishes ff-aitoolkit to PyPI whenever you push a version tag (e.g. v0.2.1).
+# Uses PyPI Trusted Publishing (OIDC) — no API token or secret is stored anywhere.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: pypi          # dedicated, protectable environment
+    permissions:
+      id-token: write          # REQUIRED: lets the job mint the short-lived OIDC token
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8
+      - run: uv python install 3.13
+
+      - name: Build
+        run: uv build
+
+      # Make sure the built artifacts import cleanly before we publish.
+      - name: Smoke test (wheel)
+        run: uv run --isolated --no-project --with dist/*.whl -- python -c "import aitoolkit; print('ok')"
+      - name: Smoke test (sdist)
+        run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import aitoolkit; print('ok')"
+
+      - name: Publish
+        run: uv publish --trusted-publishing always
